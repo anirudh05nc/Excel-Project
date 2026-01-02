@@ -26,6 +26,9 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 # 1. New Client initialization
 client = genai.Client(api_key=GOOGLE_API_KEY)
 
+@app.get('/')
+def status():
+    return {"status": "Waste Detection API is running."}
 
 @app.post('/detect')
 async def detect_waste(file: UploadFile = File(...)):
