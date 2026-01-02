@@ -3,4 +3,7 @@ venv/
 env/
 __pycache__/
 *.py[cod]
+
 .env
+
+serviceAccountKey.json
