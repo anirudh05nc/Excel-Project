@@ -7,7 +7,7 @@ from google.genai import types
 import os
 from dotenv import load_dotenv
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, messaging
 
 load_dotenv()
 
@@ -142,11 +142,50 @@ async def upload_data(
                 'image_data': image_data_uri, # Storing the image directly
                 'timestamp': firestore.SERVER_TIMESTAMP
             })
+
+            # Extract the document id (keep the existing indexing behavior)
+            try:
+                doc_id = doc_ref[1].id
+            except Exception:
+                # Fallback if the return shape is different
+                try:
+                    doc_id = doc_ref[0].id
+                except Exception:
+                    doc_id = None
+
+            # 3. Send an FCM topic notification so Flutter clients receive the update.
+            # Clients should subscribe to the `waste_updates` topic to receive these notifications.
             
+            try:
+                notif_title = "New waste item reported"
+                notif_body = f"{waste_type} ({quantity}) at {location}"
+
+                message = messaging.Message(
+                    notification=messaging.Notification(
+                        title=notif_title,
+                        body=notif_body
+                    ),
+                    data={
+                        'id': doc_id or '',
+                        'waste_type': waste_type,
+                        'quantity': str(quantity),
+                        'location': location,
+                        'date': date
+                    },
+                    topic='waste_updates'
+                )
+
+                send_result = messaging.send(message)
+            except Exception as e:
+                # Log but don't fail the whole request if notification fails
+                print(f"FCM send error: {e}")
+                send_result = None
+
             return {
-                "status": "success", 
-                "message": "Data and image uploaded to Firestore successfully", 
-                "id": doc_ref[1].id
+                "status": "success",
+                "message": "Data and image uploaded to Firestore successfully",
+                "id": doc_id,
+                "fcm_result": send_result
             }
         else:
              return {"status": "error", "message": "Firebase not initialized. Check server logs."}
