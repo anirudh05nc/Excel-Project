@@ -1,5 +1,7 @@
 import json
 import base64
+import io
+from PIL import Image
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
@@ -126,20 +128,51 @@ async def upload_data(
         if firebase_admin._apps:
             # 1. Read file and encode to Base64
             file_content = await file.read()
-            encoded_string = base64.b64encode(file_content).decode('utf-8')
             
-            # Create a Data URI (e.g., data:image/jpeg;base64,...)
-            # This makes it easy to display in <img> tags on web/mobile
-            image_data_uri = f"data:{file.content_type};base64,{encoded_string}"
+            # --- Image Compression Logic ---
+            try:
+                img = Image.open(io.BytesIO(file_content))
+                # Convert to RGB if necessary (e.g., for RGBA/PNG)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                
+                # Resize if image is very large (e.g., max width/height of 1024)
+                MAX_SIZE = (1024, 1024)
+                img.thumbnail(MAX_SIZE, Image.Resampling.LANCZOS)
+                
+                # Compress and save to buffer
+                buffer = io.BytesIO()
+                # Start with quality 85, then reduce if still too large
+                quality = 85
+                img.save(buffer, format="JPEG", quality=quality, optimize=True)
+                
+                # Check if still too large (Firestore limit 1MB, but let's aim for 700KB to be safe with base64 overhead)
+                while buffer.tell() > 700000 and quality > 30:
+                    buffer = io.BytesIO()
+                    quality -= 10
+                    img.save(buffer, format="JPEG", quality=quality, optimize=True)
+                
+                compressed_content = buffer.getvalue()
+                encoded_string = base64.b64encode(compressed_content).decode('utf-8')
+                content_type = "image/jpeg"
+            except Exception as compress_err:
+                print(f"Compression failed, using original: {compress_err}")
+                encoded_string = base64.b64encode(file_content).decode('utf-8')
+                content_type = file.content_type
+            
+            # Create a Data URI
+            image_data_uri = f"data:{content_type};base64,{encoded_string}"
 
             # 2. Save Metadata AND Image Data to Firestore
             db = firestore.client()
+            print(f"Uploading to Firestore... Data size: {len(image_data_uri)} bytes")
+            
             doc_ref = db.collection('waste_items').add({
                 'waste_type': waste_type,
                 'quantity': quantity,
                 'location': location,
                 'date': date,
-                'image_data': image_data_uri, # Storing the image directly
+                'image_data': image_data_uri,
                 'timestamp': firestore.SERVER_TIMESTAMP
             })
 
