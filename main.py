@@ -61,10 +61,17 @@ async def detect_waste(file: UploadFile = File(...)):
         prompt = """
             Analyze the given image strictly for waste management.
             
-            If waste is present, identify the primary waste type and return ONLY a valid JSON object in the following format:
+            Identify the primary waste type from these categories: "PLASTIC", "PAPER", "METAL", or "OTHERS".
+            
+            Rules for classification:
+            1. If the waste fits perfectly into PLASTIC, PAPER, or METAL, choose that category.
+            2. If the waste is not a perfect match but is primarily made of or closely aligned to one of these three, choose the most appropriate one.
+            3. If it absolutely does not fit into PLASTIC, PAPER, or METAL, categorize it as "OTHERS".
+            
+            Return ONLY a valid JSON object in the following format:
             
             {
-              "waste_type": "<specific waste type>",
+              "waste_type": "<One of: PLASTIC, PAPER, METAL, OTHERS>",
               "quantity": <estimated item count as an integer>,
               "disposal_methods": [
                 "<clear and practical disposal method 1>",
