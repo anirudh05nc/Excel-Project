@@ -139,7 +139,16 @@ async def upload_data(
     waste_type: str = Form(...),
     quantity: str = Form(...),
     location: str = Form(...),
-    date: str = Form(...)
+    date: str = Form(...),
+    latitude: float = Form(None),
+    longitude: float = Form(None),
+    userId: str = Form(None),
+    userEmail: str = Form(None),
+    userName: str = Form(None),
+    userPhone: str = Form(None),
+    userAddress: str = Form(None),
+    dispose_ways: str = Form("[]"), # JSON string
+    donts: str = Form("[]") # JSON string
 ):
     try:
         if firebase_admin._apps:
@@ -159,17 +168,35 @@ async def upload_data(
             # 2. Save Metadata to Firestore
             db = firestore.client()
             
+            try:
+                dispose_ways_list = json.loads(dispose_ways)
+                donts_list = json.loads(donts)
+            except:
+                dispose_ways_list = []
+                donts_list = []
+
             doc_ref = db.collection('waste_items').add({
-                'type': waste_type, # Keep both 'type' and 'waste_type' for compatibility
+                'type': waste_type,
                 'waste_type': waste_type,
                 'quantity': quantity,
-                'qty': quantity, # Compatibility
+                'qty': quantity,
                 'location': location,
+                'geo_location': {
+                    'latitude': latitude,
+                    'longitude': longitude,
+                },
                 'date': date,
                 'imageUrl': image_url,
-                'image_url': image_url, # Redundancy
+                'image_url': image_url,
                 'timestamp': firestore.SERVER_TIMESTAMP,
-                'time': firestore.SERVER_TIMESTAMP # Compatibility
+                'time': firestore.SERVER_TIMESTAMP,
+                'dispose_ways': dispose_ways_list,
+                'donts': donts_list,
+                'userId': userId,
+                'userEmail': userEmail,
+                'userName': userName,
+                'userPhone': userPhone,
+                'userAddress': userAddress
             })
 
             # Extract the document id (keep the existing indexing behavior)
