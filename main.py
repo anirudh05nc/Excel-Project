@@ -10,6 +10,9 @@ import os
 from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, firestore, messaging
+import cloudinary
+import cloudinary.uploader
+import requests
 
 load_dotenv()
 
@@ -122,7 +125,6 @@ async def detect_waste(file: UploadFile = File(...)):
     except Exception as e:
         print(f"Detailed Error: {e}")
         return {"waste_type": "Error", "quantity": 0, "message": str(e)}
-
 @app.post("/upload")
 async def upload_data(
     file: UploadFile = File(...),
@@ -133,54 +135,42 @@ async def upload_data(
 ):
     try:
         if firebase_admin._apps:
-            # 1. Read file and encode to Base64
+            # 1. Read file
             file_content = await file.read()
             
-            # --- Image Compression Logic ---
+            # --- Cloudinary Upload Logic ---
             try:
-                img = Image.open(io.BytesIO(file_content))
-                # Convert to RGB if necessary (e.g., for RGBA/PNG)
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
+                print(f"Uploading image to Cloudinary...")
+                cloudinary_url = f"https://api.cloudinary.com/v1_1/dcimzj1yx/image/upload"
+                files = {'file': file_content}
+                data = {'upload_preset': 'Unsigned'}
+                response = requests.post(cloudinary_url, files=files, data=data)
                 
-                # Resize if image is very large (e.g., max width/height of 1024)
-                MAX_SIZE = (1024, 1024)
-                img.thumbnail(MAX_SIZE, Image.Resampling.LANCZOS)
-                
-                # Compress and save to buffer
-                buffer = io.BytesIO()
-                # Start with quality 85, then reduce if still too large
-                quality = 85
-                img.save(buffer, format="JPEG", quality=quality, optimize=True)
-                
-                # Check if still too large (Firestore limit 1MB, but let's aim for 700KB to be safe with base64 overhead)
-                while buffer.tell() > 700000 and quality > 30:
-                    buffer = io.BytesIO()
-                    quality -= 10
-                    img.save(buffer, format="JPEG", quality=quality, optimize=True)
-                
-                compressed_content = buffer.getvalue()
-                encoded_string = base64.b64encode(compressed_content).decode('utf-8')
-                content_type = "image/jpeg"
-            except Exception as compress_err:
-                print(f"Compression failed, using original: {compress_err}")
-                encoded_string = base64.b64encode(file_content).decode('utf-8')
-                content_type = file.content_type
-            
-            # Create a Data URI
-            image_data_uri = f"data:{content_type};base64,{encoded_string}"
+                if response.status_code == 200:
+                    res_json = response.json()
+                    image_url = res_json.get('secure_url')
+                    print(f"Cloudinary upload success: {image_url}")
+                else:
+                    print(f"Cloudinary upload failed: {response.text}")
+                    image_url = ""
+            except Exception as cloudinary_err:
+                print(f"Cloudinary error: {cloudinary_err}")
+                image_url = ""
 
-            # 2. Save Metadata AND Image Data to Firestore
+            # 2. Save Metadata to Firestore
             db = firestore.client()
-            print(f"Uploading to Firestore... Data size: {len(image_data_uri)} bytes")
             
             doc_ref = db.collection('waste_items').add({
+                'type': waste_type, # Keep both 'type' and 'waste_type' for compatibility
                 'waste_type': waste_type,
                 'quantity': quantity,
+                'qty': quantity, # Compatibility
                 'location': location,
                 'date': date,
-                'image_data': image_data_uri,
-                'timestamp': firestore.SERVER_TIMESTAMP
+                'imageUrl': image_url,
+                'image_url': image_url, # Redundancy
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'time': firestore.SERVER_TIMESTAMP # Compatibility
             })
 
             # Extract the document id (keep the existing indexing behavior)
