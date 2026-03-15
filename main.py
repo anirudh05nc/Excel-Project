@@ -141,6 +141,7 @@ async def upload_data(
             # --- Cloudinary Upload Logic ---
             try:
                 print(f"Uploading image to Cloudinary...")
+                print(f"Uploading image to Cloudinary...")
                 cloudinary_url = f"https://api.cloudinary.com/v1_1/dcimzj1yx/image/upload"
                 files = {'file': file_content}
                 data = {'upload_preset': 'Unsigned'}
@@ -151,7 +152,7 @@ async def upload_data(
                     image_url = res_json.get('secure_url')
                     print(f"Cloudinary upload success: {image_url}")
                 else:
-                    print(f"Cloudinary upload failed: {response.text}")
+                    print(f"Cloudinary upload FAILED ({response.status_code}): {response.text}")
                     image_url = ""
             except Exception as cloudinary_err:
                 print(f"Cloudinary error: {cloudinary_err}")
