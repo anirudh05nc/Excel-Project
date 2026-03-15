@@ -27,6 +27,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Cloudinary Configuration ---
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    secure=True
+)
+
 # --- Firebase Initialization ---
 # Ensure you have your serviceAccountKey.json in the same directory or provide the correct path.
 # You can download this from Firebase Console -> Project Settings -> Service Accounts.
@@ -141,19 +149,9 @@ async def upload_data(
             # --- Cloudinary Upload Logic ---
             try:
                 print(f"Uploading image to Cloudinary...")
-                print(f"Uploading image to Cloudinary...")
-                cloudinary_url = f"https://api.cloudinary.com/v1_1/dcimzj1yx/image/upload"
-                files = {'file': file_content}
-                data = {'upload_preset': 'Unsigned'}
-                response = requests.post(cloudinary_url, files=files, data=data)
-                
-                if response.status_code == 200:
-                    res_json = response.json()
-                    image_url = res_json.get('secure_url')
-                    print(f"Cloudinary upload success: {image_url}")
-                else:
-                    print(f"Cloudinary upload FAILED ({response.status_code}): {response.text}")
-                    image_url = ""
+                upload_result = cloudinary.uploader.upload(file_content)
+                image_url = upload_result.get('secure_url')
+                print(f"Cloudinary upload success: {image_url}")
             except Exception as cloudinary_err:
                 print(f"Cloudinary error: {cloudinary_err}")
                 image_url = ""
