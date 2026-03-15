@@ -196,7 +196,8 @@ async def upload_data(
                 'userEmail': userEmail,
                 'userName': userName,
                 'userPhone': userPhone,
-                'userAddress': userAddress
+                'userAddress': userAddress,
+                'status': 'reported' # Base status
             })
 
             # Extract the document id (keep the existing indexing behavior)
@@ -226,7 +227,8 @@ async def upload_data(
                         'waste_type': waste_type,
                         'quantity': str(quantity),
                         'location': location,
-                        'date': date
+                        'date': date,
+                        'status': 'reported'
                     },
                     topic='waste_updates'
                 )
@@ -248,6 +250,94 @@ async def upload_data(
 
     except Exception as e:
         print(f"Error in /upload: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/update_status/{doc_id}")
+async def update_status(doc_id: str, status: str = Form(...)):
+    try:
+        db = firestore.client()
+        doc_ref = db.collection('waste_items').doc(doc_id)
+        doc = doc_ref.get()
+        
+        if not doc.exists:
+            return {"status": "error", "message": "Document not found"}
+            
+        doc_ref.update({'status': status})
+        
+        # Notify user if needed (optional implementation detail)
+        # For simplicity, we just return success here
+        return {"status": "success", "message": f"Status updated to {status}"}
+    except Exception as e:
+        print(f"Error updating status: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/upload_proof/{doc_id}")
+async def upload_proof(
+    doc_id: str,
+    file: UploadFile = File(...),
+    remarks: str = Form("")
+):
+    try:
+        db = firestore.client()
+        doc_ref = db.collection('waste_items').doc(doc_id)
+        doc = doc_ref.get()
+        
+        if not doc.exists:
+            return {"status": "error", "message": "Document not found"}
+            
+        # 1. Read file
+        file_content = await file.read()
+        
+        # 2. Upload to Cloudinary
+        try:
+            print(f"Uploading proof image to Cloudinary...")
+            upload_result = cloudinary.uploader.upload(file_content)
+            proof_image_url = upload_result.get('secure_url')
+            print(f"Cloudinary upload success: {proof_image_url}")
+        except Exception as cloudinary_err:
+            print(f"Cloudinary error: {cloudinary_err}")
+            return {"status": "error", "message": "Failed to upload proof image"}
+
+        # 3. Update Firestore
+        doc_ref.update({
+            'status': 'cleared_pending_approval',
+            'proofImageUrl': proof_image_url,
+            'cleared_remarks': remarks,
+            'cleared_at': firestore.SERVER_TIMESTAMP
+        })
+        
+        # Send notification to the specific user who reported the waste
+        data = doc.to_dict()
+        user_id = data.get('userId')
+        if user_id:
+            # Note: In a real app, you'd send to a specific device token.
+            # Here we follow the topic pattern or assume user is subscribed to their own ID topic.
+            try:
+                notif_title = "Waste Clearance Pending Approval"
+                notif_body = f"The waste at {data.get('location')} has been cleared. Please approve."
+                
+                message = messaging.Message(
+                    notification=messaging.Notification(
+                        title=notif_title,
+                        body=notif_body
+                    ),
+                    data={
+                        'id': doc_id,
+                        'status': 'cleared_pending_approval'
+                    },
+                    topic=f'user_{user_id}' # Assuming user app subscribes to user_{uid}
+                )
+                messaging.send(message)
+            except:
+                pass
+
+        return {
+            "status": "success", 
+            "message": "Proof uploaded and status updated",
+            "proofUrl": proof_image_url
+        }
+    except Exception as e:
+        print(f"Error in /upload_proof: {e}")
         return {"status": "error", "message": str(e)}
 
         
