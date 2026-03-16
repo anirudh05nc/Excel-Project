@@ -256,7 +256,7 @@ async def upload_data(
 async def update_status(doc_id: str, status: str = Form(...)):
     try:
         db = firestore.client()
-        doc_ref = db.collection('waste_items').doc(doc_id)
+        doc_ref = db.collection('waste_items').document(doc_id)
         doc = doc_ref.get()
         
         if not doc.exists:
@@ -279,7 +279,7 @@ async def upload_proof(
 ):
     try:
         db = firestore.client()
-        doc_ref = db.collection('waste_items').doc(doc_id)
+        doc_ref = db.collection('waste_items').document(doc_id)
         doc = doc_ref.get()
         
         if not doc.exists:
