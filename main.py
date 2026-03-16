@@ -260,16 +260,16 @@ async def update_status(doc_id: str, status: str = Form(...)):
         doc = doc_ref.get()
         
         if not doc.exists:
-            return {"status": "error", "message": "Document not found"}
+            raise HTTPException(status_code=404, detail="Document not found")
             
         doc_ref.update({'status': status})
         
-        # Notify user if needed (optional implementation detail)
-        # For simplicity, we just return success here
         return {"status": "success", "message": f"Status updated to {status}"}
+    except HTTPException as e:
+        raise e
     except Exception as e:
         print(f"Error updating status: {e}")
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/upload_proof/{doc_id}")
 async def upload_proof(
@@ -283,7 +283,7 @@ async def upload_proof(
         doc = doc_ref.get()
         
         if not doc.exists:
-            return {"status": "error", "message": "Document not found"}
+            raise HTTPException(status_code=404, detail="Document not found")
             
         # 1. Read file
         file_content = await file.read()
@@ -296,7 +296,7 @@ async def upload_proof(
             print(f"Cloudinary upload success: {proof_image_url}")
         except Exception as cloudinary_err:
             print(f"Cloudinary error: {cloudinary_err}")
-            return {"status": "error", "message": "Failed to upload proof image"}
+            raise HTTPException(status_code=500, detail="Failed to upload proof image")
 
         # 3. Update Firestore
         doc_ref.update({
@@ -310,8 +310,6 @@ async def upload_proof(
         data = doc.to_dict()
         user_id = data.get('userId')
         if user_id:
-            # Note: In a real app, you'd send to a specific device token.
-            # Here we follow the topic pattern or assume user is subscribed to their own ID topic.
             try:
                 notif_title = "Waste Clearance Pending Approval"
                 notif_body = f"The waste at {data.get('location')} has been cleared. Please approve."
@@ -325,7 +323,7 @@ async def upload_proof(
                         'id': doc_id,
                         'status': 'cleared_pending_approval'
                     },
-                    topic=f'user_{user_id}' # Assuming user app subscribes to user_{uid}
+                    topic=f'user_{user_id}'
                 )
                 messaging.send(message)
             except:
@@ -336,8 +334,10 @@ async def upload_proof(
             "message": "Proof uploaded and status updated",
             "proofUrl": proof_image_url
         }
+    except HTTPException as e:
+        raise e
     except Exception as e:
         print(f"Error in /upload_proof: {e}")
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
         
